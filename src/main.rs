@@ -1,4 +1,4 @@
-use bevy::{prelude::*, diagnostic::{LogDiagnosticsPlugin, FrameTimeDiagnosticsPlugin}, window::PresentMode, sprite::MaterialMesh2dBundle};
+use bevy::{prelude::*, diagnostic::{LogDiagnosticsPlugin, FrameTimeDiagnosticsPlugin}, window::{PresentMode, PrimaryWindow}, sprite::MaterialMesh2dBundle};
 use particles::consts::G;
 
 #[derive(Component)]
@@ -15,20 +15,20 @@ fn setup(
 ) {
     commands.spawn(Camera2dBundle::default());
 
-    for _ in 0..1000 {
-        commands
-        .spawn(MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::new(10.).into()).into(),
-            material: materials.add(ColorMaterial::from(Color::PURPLE)),
-            transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-            ..default()
-        })
-        .insert(Particle {
-            pos: Vec3::new(0.0, 0.0, 0.0),
-            vel: Vec3::new(50.0, 0.0, 0.0),
-            mass: 1.0,
-        });
-    }
+    // for _ in 0..1000 {
+    //     commands
+    //     .spawn(MaterialMesh2dBundle {
+    //         mesh: meshes.add(shape::Circle::new(10.).into()).into(),
+    //         material: materials.add(ColorMaterial::from(Color::PURPLE)),
+    //         transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
+    //         ..default()
+    //     })
+    //     .insert(Particle {
+    //         pos: Vec3::new(0.0, 0.0, 0.0),
+    //         vel: Vec3::new(50.0, 0.0, 0.0),
+    //         mass: 1.0,
+    //     });
+    // }
 }
 
 fn update_particles(time: Res<Time>, mut query: Query<&mut Particle>) {
@@ -44,8 +44,9 @@ fn update_particles(time: Res<Time>, mut query: Query<&mut Particle>) {
                 let r_magnitude = r.length();
 
                 if r_magnitude > 0.0 {
-                    let f = G * particle_i.mass * particle_j.mass / r_magnitude.powi(3);
-                    forces[i] += f * r;
+                    let f = G * particle_i.mass * particle_j.mass / r_magnitude.powi(2);
+                    forces[i] += f;
+                    println!("Particle {} force: {:?}", i, forces[i]);
                 }
             }
         }
@@ -67,12 +68,60 @@ fn render(mut query: Query<(&Particle, &mut Transform)>) {
     }
 }
 
+fn spawn_particles_on_click(
+    mut commands: Commands,
+    mouse_button_input: Res<Input<MouseButton>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        if let Some(position) = q_windows.single().cursor_position() {
+            let worldspace = window_to_world(position, q_windows.single(), &Transform::from_translation(Vec3::new(0., 0., 0.)));
+
+            commands
+        .spawn(MaterialMesh2dBundle {
+            mesh: meshes.add(shape::Circle::new(5.).into()).into(),
+            material: materials.add(ColorMaterial::from(Color::PURPLE)),
+            transform: Transform::from_translation(worldspace),
+            ..default()
+        })
+        .insert(Particle {
+            pos: worldspace,
+            vel: Vec3::new(50.0, 0.0, 0.0),
+            mass: 100.0,
+        });
+        }
+    }
+}
+
+fn window_to_world(
+    position: Vec2,
+    window: &Window,
+    camera: &Transform,
+) -> Vec3 {
+
+    // Invert y position to match Bevy's coordinate system
+    let position = Vec2::new(position.x, window.height() - position.y);
+
+    // Center in screen space
+    let norm = Vec3::new(
+        position.x - window.width() / 2.,
+        position.y - window.height() / 2.,
+        0.,
+    );
+
+    // Apply camera transform
+    *camera * norm
+}
+
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "N-Body Simulation".to_string(),
-                present_mode: PresentMode::AutoVsync,
+                present_mode: PresentMode::AutoNoVsync,
                 ..default()
             }),
             ..default()
@@ -80,6 +129,6 @@ fn main() {
         .add_plugins(LogDiagnosticsPlugin::default())
         .add_plugins(FrameTimeDiagnosticsPlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, (update_particles, bevy::window::close_on_esc, render))
+        .add_systems(Update, (update_particles, bevy::window::close_on_esc, render, spawn_particles_on_click))
         .run();
 }
